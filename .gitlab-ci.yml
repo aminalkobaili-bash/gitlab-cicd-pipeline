@@ -1,0 +1,68 @@
+stages:
+  - build
+  - style
+  - test
+  - deploy
+  - notify
+
+build_job:
+  stage: build
+  tags:
+    - build
+  script:
+    - cd app && make
+  artifacts:
+    paths:
+      - app/DO
+    expire_in: 30 days
+
+style_job:
+  stage: style
+  tags:
+    - style
+  script:
+    - bash scripts/style.sh
+
+test_job:
+  stage: test
+  tags:
+    - test
+  script:
+    - python3 tests/test_integration.py
+
+# Manual deploy to the production VM. Needs CI/CD variables DEPLOY_HOST, DEPLOY_USER.
+# The CD result is reported from after_script: a manual job has allow_failure: true by
+# default, so a failed deploy counts as successful for later stages and a separate
+# "when: on_failure" notify job would never start.
+deploy_job:
+  stage: deploy
+  tags:
+    - deploy
+  script:
+    - bash scripts/deploy.sh
+  after_script:
+    - |
+      if [ "$CI_JOB_STATUS" = "success" ]; then
+        bash scripts/notify.sh "🚀 <b>CD passed</b> for ${CI_COMMIT_SHORT_SHA}. Deployed to production."
+      else
+        bash scripts/notify.sh "🔥 <b>CD failed</b> for ${CI_COMMIT_SHORT_SHA}. Check: ${CI_PIPELINE_URL}"
+      fi
+  when: manual
+
+notify_ci_success:
+  stage: notify
+  tags:
+    - bot
+  script:
+    - |
+      bash scripts/notify.sh "✅ <b>CI passed</b> for ${CI_COMMIT_SHORT_SHA} on ${CI_COMMIT_BRANCH}."
+  when: on_success
+
+notify_ci_failure:
+  stage: notify
+  tags:
+    - bot
+  script:
+    - |
+      bash scripts/notify.sh "❌ <b>CI failed</b> for ${CI_COMMIT_SHORT_SHA} on ${CI_COMMIT_BRANCH}. Check pipeline: ${CI_PIPELINE_URL}"
+  when: on_failure

@@ -1,0 +1,2 @@
+# Scripts run on Linux runners: keep LF on any OS
+* text=auto eol=lf

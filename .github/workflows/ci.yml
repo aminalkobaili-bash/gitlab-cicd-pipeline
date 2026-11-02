@@ -1,0 +1,51 @@
+# Mirrors the build -> style -> test stages of .gitlab-ci.yml on GitHub-hosted runners.
+# deploy and notify stay GitLab-only: they need the self-hosted runner, the production VM and the bot secrets.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: cd app && make
+      - uses: actions/upload-artifact@v7
+        with:
+          name: DO
+          path: app/DO
+          if-no-files-found: error
+          retention-days: 30
+
+  style:
+    runs-on: ubuntu-24.04
+    needs: build
+    env:
+      CLANG_FORMAT: clang-format-18
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install clang-format 18
+        run: command -v clang-format-18 || (sudo apt-get update && sudo apt-get install -y clang-format-18)
+      - name: Check code style
+        run: bash scripts/style.sh
+
+  test:
+    runs-on: ubuntu-24.04
+    needs: [build, style]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: DO
+          path: app
+      # upload-artifact does not keep file modes: the binary comes back as 644
+      - name: Restore executable bit
+        run: chmod +x app/DO
+      - name: Integration tests
+        run: python3 tests/test_integration.py
